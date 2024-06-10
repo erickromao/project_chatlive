@@ -3,11 +3,13 @@ const authentication = require('../middlewares/authentication')
 const routerServer = Router()
 
 const ServersControllers = require('../controllers/ServersControllers')
-const {WebSocketClass} = require('../websocket/setupWebSocket')
+const {httpResponseWebSocket} = require('../websocket/setupWebSocket')
 const RoomsControllers = require('../controllers/RoomsControllers')
+const {setupWebSocket} = require('../websocket/setupWebSocket')
+
 
 const serversControllers = new ServersControllers()
-const webSocketClass = new WebSocketClass()
+const HttpResponseWebSocket = new httpResponseWebSocket()
 const roomsControllers = new RoomsControllers()
 
 //servidor
@@ -21,8 +23,7 @@ routerServer.get('/:guildid', authentication, roomsControllers.read)
 
 
 //mensagens
-routerServer.post('/message', authentication, webSocketClass.message)
-routerServer.get('/:guildid/channels/:channelid', authentication, webSocketClass.listen)
+routerServer.get('/:guildid/channels/:channelid', authentication, HttpResponseWebSocket.listen)
 
 
 
