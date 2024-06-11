@@ -1,91 +1,105 @@
 const WebSocket = require('ws')
-const {AppError} = require('../utils/AppError')
 const knex = require('../database/knex')
+const {URL} = require('url')
+const {AppError} = require('../utils/AppError')
 
-let wss
-let users = {}
+async function listenMessages(request, response){
+    const {guildid, channelid} = request.params
+    const [user] = request.user.userInfo
 
-class httpResponseWebSocket{
-    async listen(request, response){
-        const {guildid, channelid} = request.params
-           const[user] = request.user.userInfo
-           
-            const checkguidid = await knex('servers').where({id:guildid}).first()
-            if(!checkguidid){
-                throw new AppError('Servidor não encontrado.')
-            }
-            const checkchannelid = await knex('rooms').where({id:channelid}).first()
-            if(!checkchannelid){
-                throw new AppError('Sala não encontrada.')
-            }
-            
-            await knex('users').where({id: user.id}).update({
-                joinRoom: channelid,
-                joinServer: guildid
-            })
-            
-            response.json({message:`Sala ${checkchannelid.nome} acessada com sucesso.`})
-            
-           await setupWebSocket(user)
-            
-    }
-}
-
-    function createWebSocket(url){
-        if(!wss){
-            const server = require('../server')
-            wss = new WebSocket.Server({server, path:url})
-        }
-    
-    }
-    
-    async function setupWebSocket(user){
-               
-        const [sala] = await knex('rooms')
-        .where({id:user.joinRoom})
-        .select('nome', 'servidor')
-
-        const url = `/guilds/${user.joinRoom}/channels/${user.joinServer}`
-        createWebSocket(url)
-        if(wss){
-        wss.on('connection', ws =>{
-
-            let userr = user.id
-            
-            if(!users[userr]){
-                users[userr] = new Set()
-            }
-        
-            users[userr].add(ws)
-            
-            ws.userr = userr
-
-            console.log(`Usuário (${user.nome}) se conectou a (${sala.nome}) do servidor (${sala.servidor})`)
-
-            ws.on('message', message=>{
-                messages(ws, message, user)
-            })
-
-        
-            ws.on('close', async ()=>{
-                await knex('users').where({id:user.id}).update({joinRoom:null})
-                console.log(`Usuário (${user.nome}) saiu da sala (${sala.nome})`)
-            })
-        })
-    }
-        console.log('Servidor Websocket ligado.')
+    const checkServer = await knex('servers').where({id:guildid}).first()
+    if(!checkServer){
+        throw new AppError('Servidor não encontrado')
     }
 
-function messages (sender, message, user){
-    Object.keys(users).forEach(userr =>{
-        users[userr].forEach(client=>{
-            if(client !== sender && client.readyState === WebSocket.OPEN){
-                return client.send(`${user.nome}: ${message}`)
-            }
-        })
+    const checkRoom = await knex('rooms').where({id:channelid}).first()
+    if(!checkRoom){
+        throw new AppError('Sala não encontrada.')
+    }
+
+    await knex('users')
+    .where({id:user.id})
+    .update({
+        joinServer: guildid,
+        joinRoom: channelid
+    })
+
+    return response.json({
+        message: `Sala (${checkRoom.nome}) do servidor (${checkRoom.servidor}) adicionada com sucesso.`
     })
 }
+1
+async function SendMessages(request, response){
 
-module.exports = {httpResponseWebSocket}
+}
+
+
+async function setupWebSocket (server){   
+    
+    const wss = new WebSocket.Server({server})
+
+    wss.on('connection', async (ws, request)=>{
+
+        const {pathname} = new URL (request.url, `ws://${request.headers.host}`)
+        const [,userid, ,serverid,,roomid] = pathname.split('/')
+
+        
+        const [user] = await knex('users').where({id:userid})
+        if(!user){
+            ws.send('Usuário não encontrado.')
+            ws.close()
+            return
+        }
+        const [server] = await knex('servers').where({id:serverid})
+        if(!server){
+            ws.send('Servidor não econtrado.')
+            ws.close()
+            return
+        } 
+        const [room] = await knex('rooms').where({id:roomid}).where({id_server:server.id})
+        if(!room){
+            ws.send(`Sala não encontrada no servidor (${server.nome})`)
+            ws.close()
+            return
+        }
+
+        const currentURL = `/${userid}/guilds/${serverid}/channels/${roomid}`
+        
+        if(pathname != currentURL){
+            ws.send('Url incorreta.')
+            ws.close()
+            return
+        }
+
+        console.log(`Usuário (${user.nome}) conectado a sala (${room.nome}) do servidor (${room.servidor}).`)
+        wss.clients.forEach(client=>{
+            if(client!== ws && client.readyState === WebSocket.OPEN){
+                client.send(`Usuário ${user.nome} entrou na sala (${room.nome})`)
+            }
+        })
+        
+        ws.on('message', message=>{
+            
+            wss.clients.forEach(client=>{
+                if(client!== ws && client.readyState === WebSocket.OPEN){
+                    const data = new Date()
+                    client.send(JSON.stringify({
+                        usuário: user.nome,
+                        message: `${message}`,
+                        data: `${data.getDay()}/${data.getMonth()}/${data.getFullYear()}`,
+                        horas: `${data.getHours()}:${data.getMinutes()}:${data.getSeconds()}`
+                    } ))
+                }
+            })
+        })
+    })
+
+}
+
+
+
+module.exports = {listenMessages, setupWebSocket}
+
+
 
 

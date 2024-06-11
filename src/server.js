@@ -1,4 +1,5 @@
 const { ErrorsClientAndServer } = require('./utils/AppError')
+const {setupWebSocket} = require('./websocket/setupWebSocket')
 const express = require('express')
 const http = require('http')
 
@@ -16,8 +17,8 @@ createDB()
 app.use(express.json())
 app.use(router)
 
+setupWebSocket(server)
+
 app.use(ErrorsClientAndServer)
 
 server.listen(PORT, ()=> console.log(`ServerON [${PORT}]`))
-
-module.exports = server
