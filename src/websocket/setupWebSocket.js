@@ -3,7 +3,7 @@ const knex = require('../database/knex')
 const {URL} = require('url')
 const {AppError} = require('../utils/AppError')
 
-async function listenMessages(request, response){
+async function Messages(request, response){
     const {guildid, channelid} = request.params
     const [user] = request.user.userInfo
 
@@ -17,20 +17,19 @@ async function listenMessages(request, response){
         throw new AppError('Sala não encontrada.')
     }
 
+    const [checkServerJoin] = await knex('users')
+    .where({id:user.id}).where({joinServer:guildid})
+
     await knex('users')
     .where({id:user.id})
     .update({
         joinServer: guildid,
         joinRoom: channelid
-    })
+    }).increment('qtd_servers', 1)
 
     return response.json({
         message: `Sala (${checkRoom.nome}) do servidor (${checkRoom.servidor}) adicionada com sucesso.`
     })
-}
-1
-async function SendMessages(request, response){
-
 }
 
 
@@ -51,19 +50,35 @@ async function setupWebSocket (server){
             return
         }
         const [server] = await knex('servers').where({id:serverid})
+    
         if(!server){
             ws.send('Servidor não econtrado.')
             ws.close()
             return
-        } 
-        const [room] = await knex('rooms').where({id:roomid}).where({id_server:server.id})
-        if(!room){
-            ws.send(`Sala não encontrada no servidor (${server.nome})`)
+        }
+
+        if(user.joinServer != server.id){
+            ws.send(`Usuário não está no servidor (${server.nome})`)
             ws.close()
             return
         }
 
-        const currentURL = `/${userid}/guilds/${serverid}/channels/${roomid}`
+
+        const [room] = await knex('rooms').where({id:roomid}).where({id_server:server.id})
+        if(!room){
+            ws.send(`Sala não encontra1da no servidor (${server.nome})`)
+            ws.close()
+            return
+        }
+        
+        if(user.joinRoom != room.id){
+            ws.send(`Usuário não está na sala (${room.nome})`)
+            ws.close()
+            return
+        }
+
+
+        const currentURL = `/${user.id}/guilds/${user.joinServer}/channels/${user.joinRoom}`
         
         if(pathname != currentURL){
             ws.send('Url incorreta.')
@@ -72,17 +87,17 @@ async function setupWebSocket (server){
         }
 
         console.log(`Usuário (${user.nome}) conectado a sala (${room.nome}) do servidor (${room.servidor}).`)
+        ws.send(`Você entrou na sala (${room.nome})`)
         wss.clients.forEach(client=>{
             if(client!== ws && client.readyState === WebSocket.OPEN){
                 client.send(`Usuário ${user.nome} entrou na sala (${room.nome})`)
             }
         })
-        
-        ws.on('message', message=>{
-            
+
+        ws.on('message', async message=>{
+            const data = new Date()
             wss.clients.forEach(client=>{
                 if(client!== ws && client.readyState === WebSocket.OPEN){
-                    const data = new Date()
                     client.send(JSON.stringify({
                         usuário: user.nome,
                         message: `${message}`,
@@ -91,6 +106,25 @@ async function setupWebSocket (server){
                     } ))
                 }
             })
+
+            await knex('users').where({id:user.id}).increment('qtd_messages', 1)
+            await knex('messages').insert({
+                
+            })
+        })
+
+        ws.on('close', async()=>{
+            if(user.joinRoom){
+                await knex('users')
+                .where({id:user.id})
+                .update({joinRoom: null, joinServer: null}).decrement('qtd_servers', 1)
+                console.log(`Usuário (${user.nome}) saiu da sala (${room.nome}).`)
+                ws.close()
+                return
+            }else{
+                ws.close()
+                return
+            }
         })
     })
 
@@ -98,7 +132,7 @@ async function setupWebSocket (server){
 
 
 
-module.exports = {listenMessages, setupWebSocket}
+module.exports = {Messages, setupWebSocket}
 
 
 

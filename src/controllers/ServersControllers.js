@@ -23,7 +23,7 @@ class ServersControllers{
             criador: user.nome
         }).returning('*')
 
-        await knex('users').where({id:user.id}).increment('qtd_servers',1)
+        await knex('users').where({id:user.id})
 
         const serverCurrent = server.map(({id_user, ...rest })=> rest)
 

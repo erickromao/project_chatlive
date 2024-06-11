@@ -2,6 +2,7 @@
 exports.up = knex => knex.schema.createTable("messages", (table)=>{
     table.increments('id')
     table.integer('id_room').references('id').inTable('rooms')
+    table.integer('id_user').references('id').inTable('users')
     table.text('nome_user')
     table.text('message')
     
